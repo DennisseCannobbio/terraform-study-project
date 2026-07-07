@@ -1,6 +1,6 @@
 # Progreso de aprendizaje
 
-Última actualización: 2026-07-07 (sesión 3)
+Última actualización: 2026-07-07 (sesión 4)
 
 ## Etapa actual
 
@@ -12,7 +12,7 @@ Etapa 0 — Conceptos de Terraform (en progreso)
   - [x] 1. Qué es Infrastructure as Code y por qué usarlo ✅ (2026-07-07)
   - [x] 2. Sintaxis básica de HCL ✅ (2026-07-07)
   - [x] 3. Providers ✅ (2026-07-07)
-  - [ ] 4. Workflow principal (init → plan → apply → destroy)
+  - [x] 4. Workflow principal (init → plan → apply → destroy) ✅ (2026-07-07)
   - [ ] 5. State (archivo de estado, drift)
   - [ ] 6. Variables y outputs
 - [ ] Etapa 1 — Primeros recursos reales de AWS
@@ -63,11 +63,24 @@ Etapa 0 — Conceptos de Terraform (en progreso)
   GitHub; Claude solo sugiere nombres de rama/commit y los comandos. Primer bloque (setup +
   Paso 1) ya mergeado a dev vía PR. El Paso 2 aún NO está commiteado (docs recién escritos).
 
-- Pasos 1 y 2 ya mergeados a dev vía PR. El Paso 3 aún NO está commiteado (docs recién
-  escritos). Sugerir rama docs/stage-0-providers desde dev → commit docs(stage-0): ... → PR a
-  dev.
-- Siguiente contenido: Paso 4 — el workflow init → plan → apply → destroy y qué hace cada uno
-  bajo el capó. Analogías clave: `init` ≈ npm install; `plan` ≈ git diff/git status; y aquí
-  probablemente convenga el PRIMER ejemplo con código real de Stage 0 (provider `local` o
-  `random`, sin costo AWS) para ver el ciclo en vivo. OJO regla CLAUDE.md: no escribir el
-  código por el alumno salvo que lo pida; explicar primero y dejar que lo escriba él.
+- Pasos 1, 2 y 3 ya mergeados a dev vía PR.
+- Paso 4 (workflow) COMPLETADO y documentado. Incluyó el PRIMER ejercicio práctico real:
+  el alumno escribió stage-00-fundamentals/main.tf (provider `local` + recurso `local_file`)
+  y corrió init → plan → apply → destroy en vivo, más una 2ª corrida de plan que demostró la
+  idempotencia ("No changes"). Vio el terraform.tfstate por dentro (la "memoria"). Surgió una
+  gran pregunta suya sobre guardar el state en S3 (remote state) — respondida y conectada con
+  la Etapa 5. El código del alumno estaba correcto; se le comentó (sin obligar a cambiar) la
+  alineación de `=` (excusa para presentar `terraform fmt` más adelante) y el atajo de
+  interpolación (path.module sin comillas cuando va solo).
+
+- PENDIENTE DE COMMIT: el Paso 4 no está commiteado. IMPORTANTE, revisar el git status con
+  cuidado antes: ahora existe stage-00-fundamentals/ con archivos GENERADOS por terraform
+  (.terraform/, terraform.tfstate, terraform.tfstate.backup, .terraform.lock.hcl). El
+  .gitignore ya ignora .terraform/ y *.tfstate*; el .terraform.lock.hcl SÍ debe versionarse.
+  Confirmar que al commit entren solo: stage-00-fundamentals/main.tf y
+  stage-00-fundamentals/.terraform.lock.hcl (+ los docs). Sugerir rama feat/stage-0-workflow-demo
+  desde dev → commit feat(stage-0): ... → PR a dev. (Nota: como hicimos destroy, no hay infra
+  viva ni costo; ok commitear.)
+- Siguiente contenido: Paso 5 — State en profundidad (qué es, por qué, DRIFT, y el remote
+  state que ya se adelantó). Luego Paso 6 — Variables y outputs (cierra la Etapa 0).
+  Recordar regla CLAUDE.md: explicar primero, el alumno escribe el código.

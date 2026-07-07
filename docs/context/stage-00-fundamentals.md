@@ -160,6 +160,57 @@ credenciales nunca aparecen en el código (regla del CLAUDE.md).
 **Init lo descarga:** `terraform init` lee `required_providers` y descarga los plugins del
 Registry, como `npm install` lee package.json y baja las dependencias (se ve en Paso 4).
 
+### Paso 4 — El workflow: init → plan → apply → destroy (2026-07-07)
+
+Primer ejercicio práctico REAL: se creó `stage-00-fundamentals/main.tf` con el provider
+`local` (sin AWS, sin costo, sin credenciales) y un recurso `local_file` que escribe un
+archivo `hello.txt` en disco. Se recorrió el ciclo de vida completo en vivo.
+
+**`terraform init`** — prepara el directorio; lee `required_providers` y DESCARGA los
+providers del Registry a `.terraform/`. Genera `.terraform.lock.hcl` (lockfile).
+- Cuándo: la 1ª vez, o al cambiar providers/módulos/backend. No en cada cambio de recurso.
+- Analogía: ≈ `npm install` / `dotnet restore` / `pip install -r`. `.terraform/` ≈ node_modules
+  (va en .gitignore); `.terraform.lock.hcl` ≈ package-lock.json (SÍ se versiona — el propio
+  init lo dice: "Include this file in your version control repository").
+- En vivo: bajó `hashicorp/local v2.9.0` respetando `~> 2.0` (no saltó a 3.x); "(signed by
+  HashiCorp)" = verificación de firma (provider Official). Mencionó "Initializing the
+  backend..." → backend LOCAL por defecto (dónde se guarda el state; ver Paso 5).
+
+**`terraform plan`** — genera un PLAN DE EJECUCIÓN (preview del diff) SIN cambiar nada.
+- Analogía: ≈ `git diff` / `git status`. Leerlo SIEMPRE antes de aplicar.
+- Símbolos: `+` crear, `-` destruir, `~` modificar in-place, `-/+` reemplazar.
+- Mirar SIEMPRE el resumen: `Plan: X to add, Y to change, Z to destroy`. En vivo dio
+  `1 to add`. Si esperabas crear 1 y dice "3 to destroy", PARÁS y revisás.
+- `(known after apply)` = valor que no se sabe hasta crear el recurso (ej. el `id`).
+- Argumentos opcionales no definidos aparecen con su default (ej. file_permission = "0777").
+
+**`terraform apply`** — ejecuta los cambios de verdad. Incluye un `plan` implícito y PIDE
+confirmación: hay que escribir literalmente `yes` (nada más lo aprueba).
+- Analogía: ≈ `git commit` (confirmás y se hace permanente). Flujo real = loop:
+  editar .tf → plan → ¿ok? no: re-editar / sí: apply.
+- En vivo: creó el archivo; el `id` que era (known after apply) pasó a tener valor (hash SHA1
+  del contenido). Resumen: `1 added` (coincide con lo que prometió el plan).
+
+**`terraform destroy`** — elimina TODA la infra gestionada. Muestra plan lleno de `-`,
+`There is no undo`, pide `yes`.
+- Analogía: ≈ `docker-compose down`. Hábito clave del proyecto: destruir al final de cada
+  sesión para no dejar recursos con costo (regla del CLAUDE.md).
+- En vivo: cada atributo mostró la transición `"valor" -> null`; resumen `1 to destroy`.
+  Después: `hello.txt` desapareció (Test-Path → False) y el state quedó con `"resources": []`.
+
+**IDEMPOTENCIA demostrada en vivo:** tras el apply, correr `terraform plan` de nuevo SIN
+cambios dio `No changes. Your infrastructure matches the configuration.` Terraform hace un
+`Refreshing state...` (sincroniza el state con la realidad → esto detecta drift, Paso 5) y
+compara .tf (deseado) vs state/realidad; como son iguales, no actúa. Esto es lo que hace
+SEGURO re-aplicar (contraste con el script imperativo que fallaba con "el bucket ya existe").
+
+**El STATE FILE (`terraform.tfstate`) — antesala del Paso 5:** el apply generó este JSON = la
+"memoria" de Terraform. Guarda type/name del recurso y todos sus atributos reales (id,
+content, hashes…). Es lo que Terraform compara en cada `plan`: .tf (deseado) vs .tfstate (lo
+que sabe que existe) → por eso plan ≈ git diff (necesita ambos lados). Campos vistos:
+`serial` (contador de versión del state, subió 1→3 con los cambios), `lineage` (id único del
+state). El `.tfstate` va en .gitignore porque puede contener SECRETOS en texto plano.
+
 ## Analogías usadas
 
 - **🐳 Docker** — Terraform es el `Dockerfile` de tu infraestructura: describes el estado
@@ -194,6 +245,12 @@ Registry, como `npm install` lee package.json y baja las dependencias (se ve en 
   required_providers (qué librería y versión traer) es como el <PackageReference> del .csproj;
   el bloque provider (cómo se comporta en runtime: región, etc.) es como el appsettings.json /
   cadena de conexión que configura esa librería.
+- **🔄 El workflow ≈ comandos git/docker (Paso 4)** — `init` ≈ npm install/dotnet restore;
+  `plan` ≈ git diff/git status; `apply` ≈ git commit (con confirmación "yes"); `destroy` ≈
+  docker-compose down.
+- **🐙 Remote state en S3 ≈ GitHub para el state (Paso 4/Etapa 5)** — el `.tfstate` local es
+  como un repo git que solo vive en tu laptop; guardarlo en un bucket S3 compartido es como
+  GitHub: la fuente de verdad central de la que todo el equipo lee/escribe.
 
 ## Preguntas y respuestas
 
@@ -234,6 +291,18 @@ Registry, como `npm install` lee package.json y baja las dependencias (se ve en 
   "cómo" (config: región, etc.). El alumno notó bien que en required_providers pueden ir
   varios providers, no solo aws (ej. google, azurerm, random).
 
+- **P (Paso 4): "Un colega me dijo que guardaban el state en un bucket S3, ¿estoy cerca?"**
+  R: Totalmente correcto. El `.tfstate` local no sirve para equipos: (1) no se comparte —
+  otro dev sin tu state creería que no existe nada e intentaría recrear todo; (2) puede tener
+  secretos en texto plano (por eso va en .gitignore); (3) dos `apply` simultáneos pueden
+  corromperlo. Solución = REMOTE STATE: guardar el .tfstate en un backend central compartido,
+  el más común en AWS = un bucket S3 (con versionado y cifrado), + un LOCK para evitar applies
+  simultáneos (tradicionalmente tabla DynamoDB; hoy S3 puede hacer lock nativo). El
+  "Initializing the backend..." del init es justo el mecanismo (por defecto = backend local).
+  Analogía: state local ≈ repo git solo en tu laptop; state en S3 ≈ GitHub (fuente de verdad
+  central del equipo). Esto es EXACTAMENTE la Etapa 5 del roadmap (migrar a S3 + DynamoDB);
+  se deja para más adelante para primero entender el state local y simple.
+
 ## Errores y lecciones
 
 - Intuición inicial incompleta sobre "declarativo": se pensó como "declarar qué recurso
@@ -255,6 +324,10 @@ Registry, como `npm install` lee package.json y baja las dependencias (se ve en 
   — argumentos, bloques, etiquetas, identificadores, comentarios. (Paso 2)
 - [Providers](https://developer.hashicorp.com/terraform/language/providers)
   — qué son, modelo de plugins, Registry, required_providers, bloque provider, init. (Paso 3)
+- [Core workflow](https://developer.hashicorp.com/terraform/intro/core-workflow)
+  — Write → Plan → Apply como loop; qué hace init/plan/apply. (Paso 4)
+- [Recurso local_file](https://registry.terraform.io/providers/hashicorp/local/latest/docs/resources/file)
+  — argumentos filename (requerido), content, defaults de permisos. (Paso 4)
 
 ## Estado
 
