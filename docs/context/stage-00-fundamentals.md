@@ -108,6 +108,58 @@ recursos (ej. `learning_lambda_role`) — es lo idiomático en Terraform, como e
 **Modelo mental final:** todo `.tf`, por grande que sea, es solo bloques con argumentos (y a
 veces bloques anidados) adentro, anidados como muñecas rusas. Dos construcciones, nada más.
 
+### Paso 3 — Providers (2026-07-07)
+
+**El problema que resuelve.** Terraform "vacío" sabe leer HCL y correr el workflow, pero NO
+sabe qué es un bucket S3, un rol IAM, etc. No conoce ninguna plataforma. Meter el
+conocimiento de todas las plataformas dentro del binario sería inmantenible (las plataformas
+cambian y crecen constantemente). Solución: arquitectura de **plugins** = providers.
+
+**Definición.** Un provider es un plugin que le enseña a Terraform a hablar con una plataforma
+específica (AWS, Azure, GitHub…), traduciendo los bloques de HCL en llamadas a la API de esa
+plataforma. Doc oficial: *"cada tipo de recurso está implementado por un provider; sin
+providers, Terraform no puede gestionar ningún tipo de infraestructura."* El provider aporta
+el **vocabulario**: el tipo `aws_s3_bucket` existe porque el provider de AWS lo trae.
+
+**El Registry.** Los providers viven en el Terraform Registry (registry.terraform.io) =
+equivalente a nuget.org / PyPI / npmjs.com. Clasificados por tiers: Official (HashiCorp, ej.
+AWS), Partner (verificado por HashiCorp), Community (revisar antes de depender). Usaremos el
+oficial `hashicorp/aws`.
+
+**Se declara en DOS piezas distintas:**
+1. `required_providers` (dentro del bloque `terraform {}`) = **QUÉ provider + QUÉ versión**.
+   Es la "lista de dependencias" (como package.json / <PackageReference>).
+   ```hcl
+   terraform {
+     required_providers {
+       aws = { source = "hashicorp/aws", version = "~> 5.0" }
+     }
+   }
+   ```
+   - `source` = dirección en el Registry (namespace/nombre, como el ID de un paquete NuGet).
+   - `version = "~> 5.0"` = restricción de versión (el CLAUDE.md pide pinnear con `~>`).
+   - Pueden ir VARIOS providers a la vez (ej. aws + random + google/azurerm). Nota de nombre:
+     el provider de GCP se llama `google`; el de Azure, `azurerm` ("gcp" es el concepto).
+2. `provider "aws"` (bloque aparte) = **CÓMO se configura** ese provider (ej. región).
+   ```hcl
+   provider "aws" { region = "us-east-1" }
+   ```
+   - Es un bloque con UNA etiqueta (el nombre del provider).
+
+   Distinción clave: `required_providers` = "necesito el plugin AWS 5.x" (qué instalar);
+   `provider "aws"` = "y cuando lo uses, trabaja en us-east-1" (cómo comportarse).
+
+**Credenciales de AWS: NO van en el bloque provider.** El provider las busca automáticamente
+en el entorno (variables de entorno, perfiles del AWS CLI, roles IAM) — igual que boto3 / el
+SDK de AWS. Por eso en la Etapa 1 se configura un perfil dedicado del AWS CLI, y las
+credenciales nunca aparecen en el código (regla del CLAUDE.md).
+
+**Dónde vive en el proyecto:** archivo `providers.tf` (convención; Terraform lee todos los
+`.tf` de la carpeta igual). Ahí irán el bloque `terraform{}` y el `provider "aws"{}`.
+
+**Init lo descarga:** `terraform init` lee `required_providers` y descarga los plugins del
+Registry, como `npm install` lee package.json y baja las dependencias (se ve en Paso 4).
+
 ## Analogías usadas
 
 - **🐳 Docker** — Terraform es el `Dockerfile` de tu infraestructura: describes el estado
@@ -130,6 +182,18 @@ veces bloques anidados) adentro, anidados como muñecas rusas. Dos construccione
 - **🟣 `resource "tipo" "nombre"` ≈ instanciación en .NET (Paso 2)** —
   `resource "aws_s3_bucket" "mi_bucket"` es como `AwsS3Bucket miBucket = new AwsS3Bucket{}`:
   `aws_s3_bucket` = el tipo/clase; `mi_bucket` = el nombre de la instancia/variable.
+- **📦 Provider ≈ paquete NuGet/pip/npm (Paso 3)** — la analogía central. Un provider es una
+  dependencia versionada que le da a Terraform un vocabulario nuevo, igual que instalar
+  `Microsoft.Data.SqlClient` te da `SqlConnection`/`SqlCommand`. Paralelos exactos:
+  required_providers ≈ package.json; .terraform.lock.hcl ≈ package-lock.json; `terraform init`
+  ≈ `npm install`; el Registry ≈ nuget.org/PyPI/npmjs.com.
+- **🐳 Provider ≈ imagen base de Docker (Paso 3)** — como `FROM python:3.11` te da un
+  vocabulario listo sobre el que construir, el provider es la "base" que te da el vocabulario
+  de recursos de AWS.
+- **🟣 required_providers vs provider ≈ .csproj vs appsettings.json (Paso 3)** —
+  required_providers (qué librería y versión traer) es como el <PackageReference> del .csproj;
+  el bloque provider (cómo se comporta en runtime: región, etc.) es como el appsettings.json /
+  cadena de conexión que configura esa librería.
 
 ## Preguntas y respuestas
 
@@ -159,6 +223,17 @@ veces bloques anidados) adentro, anidados como muñecas rusas. Dos construccione
   R (correcta): `instance_type` es argumento (tiene `=`); `network_interface` es bloque
   anidado (no tiene `=`). La pista es el signo `=`.
 
+- **P (Paso 3): ¿Por qué Terraform necesita providers en vez de traer todo AWS incluido?**
+  R (correcta): por mantenibilidad — las plataformas cambian y crecen constantemente, meter
+  todo en el binario sería inmantenible. El alumno lo comparó (bien) con "librerías/packages".
+  Beneficio derivado: al versionarse aparte, un servicio nuevo de AWS solo requiere actualizar
+  ESE provider, no Terraform entero.
+
+- **P (Paso 3): ¿Diferencia entre required_providers y el bloque provider "aws"?**
+  R (correcta): required_providers = el "qué" (qué provider + versión); provider "aws" = el
+  "cómo" (config: región, etc.). El alumno notó bien que en required_providers pueden ir
+  varios providers, no solo aws (ej. google, azurerm, random).
+
 ## Errores y lecciones
 
 - Intuición inicial incompleta sobre "declarativo": se pensó como "declarar qué recurso
@@ -178,6 +253,8 @@ veces bloques anidados) adentro, anidados como muñecas rusas. Dos construccione
   — definición de IaC, workflow write/plan/apply, declarativo vs. imperativo. (Paso 1)
 - [Configuration Syntax (HCL)](https://developer.hashicorp.com/terraform/language/syntax/configuration)
   — argumentos, bloques, etiquetas, identificadores, comentarios. (Paso 2)
+- [Providers](https://developer.hashicorp.com/terraform/language/providers)
+  — qué son, modelo de plugins, Registry, required_providers, bloque provider, init. (Paso 3)
 
 ## Estado
 
