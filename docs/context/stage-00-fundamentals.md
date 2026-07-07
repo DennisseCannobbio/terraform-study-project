@@ -211,6 +211,66 @@ que sabe que existe) → por eso plan ≈ git diff (necesita ambos lados). Campo
 `serial` (contador de versión del state, subió 1→3 con los cambios), `lineage` (id único del
 state). El `.tfstate` va en .gitignore porque puede contener SECRETOS en texto plano.
 
+### Paso 5 — State: la memoria de Terraform (2026-07-07)
+
+**La pregunta central:** Terraform es declarativo (compara deseado vs. existente y aplica la
+diferencia). Pero ¿cómo sabe "lo que existe"? Necesita MEMORIA = el state.
+
+**Las 4 razones del state (doc oficial):**
+1. **Mapear código ↔ recursos reales.** `resource "aws_instance" "foo"` debe vincularse a la
+   instancia real `i-abcd1234`. El state guarda ese vínculo (nombre local ↔ id real). En el
+   ejercicio se vio: type=local_file, name=hello_world, id=<hash>. Es la razón base.
+   Analogía: como el *identity map* de un ORM (EF Core) que mapea objeto ↔ fila por su PK para
+   decidir INSERT vs UPDATE.
+2. **Saber qué destruir.** Si borras un recurso del .tf, Terraform sabe que existía PORQUE
+   está en el state; al comparar, detecta que sobra y lo destruye. Sin state, quedaría
+   "huérfano" en AWS (vivo y costando, invisible para Terraform).
+3. **Performance (caché).** Con cientos de recursos, consultar la API por cada uno en cada
+   plan sería lento y chocaría con rate limits. El state cachea atributos (con `-refresh=false`
+   se confía solo en el state). Analogía: caché de 2º nivel de un ORM / package-lock.json.
+4. **Colaboración en equipo.** State compartido (remoto) = fuente única de verdad + locks
+   para applies simultáneos. Es la razón detrás de la Etapa 5 (remote state, ya adelantado).
+
+**DRIFT (deriva) — el concepto estrella:**
+- Definición: la infra REAL deja de coincidir con lo que el state registra, porque algo cambió
+  POR FUERA de Terraform (típico: alguien edita a mano en la Consola de AWS).
+- Cómo se detecta: el `Refreshing state...` que corre antes del plan va a la API real y
+  compara; si la realidad difiere del state, lo muestra en el plan.
+- Es la solución al dolor del Paso 1 ("alguien tocó la Consola un viernes y nadie se enteró"):
+  `plan` delata el drift, `apply` lo corrige empujando la realidad de vuelta al .tf.
+
+**DEMO de drift EN VIVO (hecha en el ejercicio):**
+1. `terraform apply` para recrear hello.txt ("Hello world!").
+2. Se editó el archivo a mano: `Set-Content ./hello.txt "Editado a mano..."` → drift provocado.
+3. `terraform plan` lo detectó. LECCIÓN EXTRA INESPERADA: en vez de `~` (modificar in-place),
+   mostró `+ create` / `1 to add`. Por qué: el provider `local` guarda el hash del contenido
+   como `id`; al cambiar el contenido a mano, el archivo real ya no coincide con ese id, así
+   que el provider lo trató como "el recurso desapareció" → planea RECREARLO. El tipo de
+   acción (recreate vs modify) DEPENDE DEL PROVIDER: p.ej. cambiar un tag de un aws_s3_bucket
+   daría `~` (modify in-place) porque AWS puede actualizarlo sin recrear. Para local_file, el
+   contenido es parte de su identidad → recrear.
+4. Lo esencial SÍ ocurrió: Terraform NO adoptó la edición manual; el plan restaura
+   "Hello world!". `terraform apply` → el archivo volvió a "Hello world!" (y el id volvió al
+   mismo hash). Drift corregido: la fuente de verdad es el código, no el cambio manual.
+
+**STATE vs BACKEND (duda del alumno, importante NO confundir):**
+- **State** = el DATO: el archivo `.tfstate` con la info de recursos (la memoria). Existe
+  siempre, uses el backend que uses.
+- **Backend** = el MECANISMO/LUGAR: la config de DÓNDE y CÓMO se guarda ese state.
+- Analogía: el state es un documento (memoria.docx); el backend es dónde lo guardas (disco
+  local vs Google Drive vs servidor de red). Mismo documento, distinto lugar.
+- El `Initializing the backend...` del init configura esto. Sin especificar nada → backend
+  **local** por defecto (state en ./terraform.tfstate). Backend remoto (ej. S3) se declara con
+  un bloque `backend "s3" { bucket, key, region }` dentro de `terraform {}` (Etapa 5).
+- Frase correcta: "S3 es un tipo de BACKEND, y en ese backend se guarda el STATE". El colega
+  que "guardaba el state en S3" en rigor configuró un backend S3.
+
+**El state es DELICADO:**
+- Puede contener SECRETOS en texto plano (→ .gitignore local; cifrado en S3 remoto).
+- NO editar el .tfstate a mano (se corrompe). Usar comandos: `terraform state mv/rm`, `import`.
+- Es LA fuente de verdad de Terraform, no AWS: si borras el .tfstate, Terraform "olvida" sus
+  recursos aunque sigan vivos en AWS (por eso el remoto con versionado protege de perderlo).
+
 ## Analogías usadas
 
 - **🐳 Docker** — Terraform es el `Dockerfile` de tu infraestructura: describes el estado
@@ -251,6 +311,12 @@ state). El `.tfstate` va en .gitignore porque puede contener SECRETOS en texto p
 - **🐙 Remote state en S3 ≈ GitHub para el state (Paso 4/Etapa 5)** — el `.tfstate` local es
   como un repo git que solo vive en tu laptop; guardarlo en un bucket S3 compartido es como
   GitHub: la fuente de verdad central de la que todo el equipo lee/escribe.
+- **🗺️ State ≈ identity map de un ORM (Paso 5)** — como EF Core mapea objeto en memoria ↔ fila
+  real (por su PK) para decidir INSERT vs UPDATE, el state mapea recurso declarado ↔ recurso
+  real (por su id).
+- **📄 State vs Backend ≈ documento vs dónde lo guardas (Paso 5)** — el state es el documento
+  (memoria.docx); el backend es el lugar/mecanismo de almacenamiento (disco local vs Google
+  Drive vs servidor). Mismo dato, distinta ubicación.
 
 ## Preguntas y respuestas
 
@@ -303,11 +369,28 @@ state). El `.tfstate` va en .gitignore porque puede contener SECRETOS en texto p
   central del equipo). Esto es EXACTAMENTE la Etapa 5 del roadmap (migrar a S3 + DynamoDB);
   se deja para más adelante para primero entender el state local y simple.
 
-## Errores y lecciones
+- **P (Paso 5): ¿Por qué Terraform necesita el state?**
+  R (correcta): es la fuente de verdad; sin él Terraform no sabe qué recursos existen ni
+  cuáles gestionó. (Esa es la Razón 1: el mapeo código↔realidad, base de las otras 3.)
+
+- **P (Paso 5): ¿Qué es el drift y cómo se detecta?**
+  R (correcta): diferencia entre lo que el state registra y la infra real, por cambios hechos
+  fuera de Terraform (ej. a mano en la Consola). Se detecta con el `Refreshing state...` antes
+  del plan, que compara la realidad contra el state.
+
+- **P (Paso 5): ¿El backend es lo mismo que el state guardado en S3?**
+  R: No. State = el dato (.tfstate, la memoria). Backend = el mecanismo/lugar donde se guarda.
+  S3 es un tipo de backend; en él se guarda el state. Ver "STATE vs BACKEND" en Conceptos.
 
 - Intuición inicial incompleta sobre "declarativo": se pensó como "declarar qué recurso
   crear". Corregido a "declarar el **estado final** deseado" (un estado, no una acción).
   Ver corrección detallada en "Conceptos cubiertos → Paso 1".
+
+- (Paso 5, demo de drift) Predije que editar hello.txt a mano daría `~` (modify in-place),
+  pero dio `+ create` (recrear). Lección: el TIPO de acción ante drift depende del provider.
+  El local_file usa el hash del contenido como id, así que un contenido distinto = "otro
+  recurso" → recrear. Otros atributos/providers (ej. un tag de aws_s3_bucket) sí modifican
+  in-place. No asumir el tipo de acción; leer siempre el plan.
 
 ## Configuración del entorno
 
@@ -328,6 +411,8 @@ state). El `.tfstate` va en .gitignore porque puede contener SECRETOS en texto p
   — Write → Plan → Apply como loop; qué hace init/plan/apply. (Paso 4)
 - [Recurso local_file](https://registry.terraform.io/providers/hashicorp/local/latest/docs/resources/file)
   — argumentos filename (requerido), content, defaults de permisos. (Paso 4)
+- [Purpose of Terraform State](https://developer.hashicorp.com/terraform/language/state/purpose)
+  — las 4 razones del state: mapeo, destrucción, performance, colaboración. (Paso 5)
 
 ## Estado
 

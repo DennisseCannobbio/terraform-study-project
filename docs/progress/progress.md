@@ -1,6 +1,6 @@
 # Progreso de aprendizaje
 
-Última actualización: 2026-07-07 (sesión 4)
+Última actualización: 2026-07-07 (sesión 5)
 
 ## Etapa actual
 
@@ -13,7 +13,7 @@ Etapa 0 — Conceptos de Terraform (en progreso)
   - [x] 2. Sintaxis básica de HCL ✅ (2026-07-07)
   - [x] 3. Providers ✅ (2026-07-07)
   - [x] 4. Workflow principal (init → plan → apply → destroy) ✅ (2026-07-07)
-  - [ ] 5. State (archivo de estado, drift)
+  - [x] 5. State (archivo de estado, drift) ✅ (2026-07-07)
   - [ ] 6. Variables y outputs
 - [ ] Etapa 1 — Primeros recursos reales de AWS
   - [ ] 7. Bucket S3 con versioning
@@ -73,14 +73,22 @@ Etapa 0 — Conceptos de Terraform (en progreso)
   alineación de `=` (excusa para presentar `terraform fmt` más adelante) y el atajo de
   interpolación (path.module sin comillas cuando va solo).
 
-- PENDIENTE DE COMMIT: el Paso 4 no está commiteado. IMPORTANTE, revisar el git status con
-  cuidado antes: ahora existe stage-00-fundamentals/ con archivos GENERADOS por terraform
-  (.terraform/, terraform.tfstate, terraform.tfstate.backup, .terraform.lock.hcl). El
-  .gitignore ya ignora .terraform/ y *.tfstate*; el .terraform.lock.hcl SÍ debe versionarse.
-  Confirmar que al commit entren solo: stage-00-fundamentals/main.tf y
-  stage-00-fundamentals/.terraform.lock.hcl (+ los docs). Sugerir rama feat/stage-0-workflow-demo
-  desde dev → commit feat(stage-0): ... → PR a dev. (Nota: como hicimos destroy, no hay infra
-  viva ni costo; ok commitear.)
-- Siguiente contenido: Paso 5 — State en profundidad (qué es, por qué, DRIFT, y el remote
-  state que ya se adelantó). Luego Paso 6 — Variables y outputs (cierra la Etapa 0).
-  Recordar regla CLAUDE.md: explicar primero, el alumno escribe el código.
+- Pasos 1-4 ya mergeados a dev vía PR. El flujo git del alumno es sólido (branch desde dev →
+  add con verificación --ignored/--dry-run → commit conventional → PR a dev → pull). Aprendió
+  a verificar que el .tfstate NO entre al repo antes de cada add.
+- Paso 5 (State) COMPLETADO y documentado. Se cubrió: las 4 razones del state (mapeo,
+  destrucción, performance/caché, colaboración), DRIFT (definición + detección vía Refreshing
+  state), la distinción STATE vs BACKEND (duda del alumno, ya registrada), y que el state es
+  delicado (secretos, no editar a mano, es la fuente de verdad). DEMO DE DRIFT en vivo: editar
+  hello.txt a mano → plan lo detectó → apply lo revirtió. Lección extra: el tipo de acción
+  (recreate vs modify) depende del provider (local_file recrea porque el id es el hash del
+  contenido). El alumno respondió bien las 2 preguntas de verificación.
+
+- PENDIENTE DE COMMIT: el Paso 5 no está commiteado. Es SOLO documentación (docs/context y
+  docs/progress); el main.tf no cambió y ya hicimos destroy (no hay infra viva ni state con
+  recursos). Sugerir rama docs/stage-0-state desde dev → commit docs(stage-0): ... → PR a dev.
+- Siguiente contenido: Paso 6 — Variables y outputs (CIERRA la Etapa 0). variables.tf (input
+  vars con type/description/default), terraform.tfvars (≈ .env), outputs.tf. Analogías:
+  variables ≈ parámetros de constructor/appsettings en .NET, .tfvars ≈ .env de Node. Probable
+  ejercicio práctico: parametrizar el main.tf del local_file (ej. el content/filename por
+  variable) y exponer algo por output. Recordar: explicar primero, el alumno escribe el código.
