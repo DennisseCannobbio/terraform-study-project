@@ -1,6 +1,6 @@
 # Progreso de aprendizaje
 
-Última actualización: 2026-07-07 (sesión 2)
+Última actualización: 2026-07-07 (sesión 3)
 
 ## Etapa actual
 
@@ -11,7 +11,7 @@ Etapa 0 — Conceptos de Terraform (en progreso)
 - [ ] Etapa 0 — Conceptos de Terraform
   - [x] 1. Qué es Infrastructure as Code y por qué usarlo ✅ (2026-07-07)
   - [x] 2. Sintaxis básica de HCL ✅ (2026-07-07)
-  - [ ] 3. Providers
+  - [x] 3. Providers ✅ (2026-07-07)
   - [ ] 4. Workflow principal (init → plan → apply → destroy)
   - [ ] 5. State (archivo de estado, drift)
   - [ ] 6. Variables y outputs
@@ -47,6 +47,13 @@ Etapa 0 — Conceptos de Terraform (en progreso)
   patrón resource "tipo" "nombre" (con la distinción nombre local vs nombre real en AWS),
   comentarios (#, //, /* */), identificadores + convención snake_case, y argumento vs bloque
   anidado (pista: el `=`). El alumno respondió correctamente ambas preguntas de verificación.
+- Paso 3 (Providers) COMPLETADO y documentado. Se cubrió: por qué existen (mantenibilidad,
+  modelo de plugins), qué aportan (vocabulario de tipos de recurso), el Registry + tiers, las
+  2 piezas de declaración (required_providers = qué+versión; bloque provider = cómo/región),
+  que las credenciales NO van en el código (se toman del entorno/perfil AWS CLI), y que init
+  descarga los providers (≈ npm install). Analogía central: provider ≈ paquete NuGet/pip/npm.
+  El alumno respondió bien ambas preguntas y aportó intuiciones correctas (varios providers a
+  la vez; versionado independiente).
 
 - FLUJO GIT establecido y en uso: repo en GitHub (DennisseCannobbio/terraform-study-project,
   privado). Ramas de entorno main/qa/dev sembradas desde un commit vacío inicial. Modelo:
@@ -56,7 +63,11 @@ Etapa 0 — Conceptos de Terraform (en progreso)
   GitHub; Claude solo sugiere nombres de rama/commit y los comandos. Primer bloque (setup +
   Paso 1) ya mergeado a dev vía PR. El Paso 2 aún NO está commiteado (docs recién escritos).
 
-- Siguiente: (a) commitear el Paso 2 — sugerir rama feat/stage-0-hcl-syntax desde dev, commit
-  docs(stage-0): ..., PR a dev. (b) Luego Paso 3 — Providers (qué son, por qué Terraform los
-  necesita; analogía con instalar un paquete NuGet/pip que da un vocabulario de recursos).
-  Explicación primero, sin código aún salvo que el alumno lo pida.
+- Pasos 1 y 2 ya mergeados a dev vía PR. El Paso 3 aún NO está commiteado (docs recién
+  escritos). Sugerir rama docs/stage-0-providers desde dev → commit docs(stage-0): ... → PR a
+  dev.
+- Siguiente contenido: Paso 4 — el workflow init → plan → apply → destroy y qué hace cada uno
+  bajo el capó. Analogías clave: `init` ≈ npm install; `plan` ≈ git diff/git status; y aquí
+  probablemente convenga el PRIMER ejemplo con código real de Stage 0 (provider `local` o
+  `random`, sin costo AWS) para ver el ciclo en vivo. OJO regla CLAUDE.md: no escribir el
+  código por el alumno salvo que lo pida; explicar primero y dejar que lo escriba él.
