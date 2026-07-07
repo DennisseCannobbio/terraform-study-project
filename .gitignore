@@ -1,0 +1,29 @@
+# --- Terraform ---
+# Local .terraform directories (provider plugins, modules cache)
+**/.terraform/*
+
+# State files — NEVER commit these (may contain secrets, and are environment-specific)
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variable files that may contain sensitive values.
+# We keep *.tfvars ignored by default; commit an example file instead if needed.
+*.tfvars
+*.tfvars.json
+
+# Override files (local-only overrides)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI config / credentials that should never be committed
+.terraformrc
+terraform.rc
+
+# --- Lock file ---
+# The provider lock file (.terraform.lock.hcl) is intentionally NOT ignored.
+# Committing it pins provider versions/hashes for reproducible builds across machines,
+# similar to package-lock.json / poetry.lock. Kept tracked on purpose.
