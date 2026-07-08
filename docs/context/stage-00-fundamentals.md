@@ -271,6 +271,66 @@ diferencia). Pero ¿cómo sabe "lo que existe"? Necesita MEMORIA = el state.
 - Es LA fuente de verdad de Terraform, no AWS: si borras el .tfstate, Terraform "olvida" sus
   recursos aunque sigan vivos en AWS (por eso el remoto con versionado protege de perderlo).
 
+### Paso 6 — Variables y outputs (2026-07-07) — CIERRA LA ETAPA 0
+
+Mismo principio que en backend: separar los valores configurables del código (no hardcodear).
+Dos direcciones: variables (datos que ENTRAN) y outputs (datos que SALEN).
+
+**INPUT VARIABLES (entrada):**
+- Se declaran con un bloque `variable "nombre" {}` con argumentos:
+  - `type` (string, number, bool, o complejos: list/map/set/object)
+  - `description` (documenta el propósito)
+  - `default` (OPCIONAL). Con default → variable opcional; SIN default → obligatoria (Terraform
+    pide el valor al correr).
+- Se USAN con la sintaxis `var.<nombre>` (primera referencia que vimos; apunta a otra cosa en
+  vez de un literal).
+- Analogía: un bloque variable ≈ parámetro de constructor / entrada de appsettings.json en .NET.
+  Sin default ≈ parámetro obligatorio.
+
+**Cómo se ASIGNA valor (precedencia, de MAYOR a menor):**
+1. `-var` / `-var-file` en la CLI (máxima prioridad)
+2. archivos `*.auto.tfvars`
+3. `terraform.tfvars`
+4. variables de entorno con prefijo `TF_VAR_` (ej. TF_VAR_file_content=x)
+5. el `default` del bloque variable (última prioridad)
+- `terraform.tfvars` ≈ el `.env` de Node: valores concretos separados del código. Se carga
+  AUTOMÁTICAMENTE si se llama terraform.tfvars o *.auto.tfvars.
+- Analogía: es el mismo sistema en capas de IConfiguration de .NET (appsettings < env < CLI).
+- DEMOSTRADO en vivo: el .tfvars tenía file_content="Hello World!!!!!" y el default era
+  "Hello World!"; el plan mostró el valor del .tfvars → el .tfvars GANA sobre el default.
+
+**OUTPUT VALUES (salida):**
+- Se declaran con `output "nombre" {}` con: `value` (la expresión a exponer), `description`,
+  `sensitive` (opcional, oculta en CLI).
+- El `value` es una REFERENCIA A UN ATRIBUTO de un recurso: `<recurso>.<atributo>`, ej.
+  `local_file.hello_world.id`. NO el recurso entero (bug que cometió el alumno: puso
+  `local_file.hello_world` sin `.id`; corregido). Es como acceder a `objeto.Id` en C#.
+- Usos: (1) mostrar info tras apply; (2) comunicar entre módulos (Etapa 5); (3) alimentar
+  automatización (`terraform output -json`).
+- Se ven con `terraform output` (todos) o `terraform output <nombre>` (uno).
+- Analogía: si las variables son los parámetros de entrada, los outputs son el `return` /
+  propiedades públicas que expones. DEMOSTRADO: file_id pasó de (known after apply) en el plan
+  a un hash real tras el apply.
+
+**Cómo se comparten las variables en equipo (gran duda del alumno):**
+- `terraform.tfvars` NO se versiona (gitignored, puede tener secretos) → cada persona tiene el
+  suyo localmente. ¿Cómo sabe cada uno qué poner? Tres mecanismos:
+  1. Patrón `terraform.tfvars.example` (SÍ se versiona): plantilla con placeholders, sin datos
+     reales. Cada dev la copia a terraform.tfvars y rellena. IDÉNTICO al .env.example de Node.
+  2. Los `default` en variables.tf (que SÍ se versiona): muchas variables no necesitan estar en
+     el .tfvars si tienen un default sensato.
+  3. Secretos de verdad: no van en ningún archivo → variables de entorno TF_VAR_ o gestores
+     (AWS Secrets Manager, Vault); en CI/CD, los secrets del repo.
+- Regla mental: se versiona la ESTRUCTURA (qué variables existen + plantilla), no los VALORES.
+
+**Reparto de archivos (layout del CLAUDE.md):**
+- `variables.tf` → declaraciones (SÍ se versiona; ≈ schema de config)
+- `terraform.tfvars` → valores reales (NO se versiona; ≈ .env)
+- `terraform.tfvars.example` → plantilla (SÍ se versiona; ≈ .env.example)
+- `main.tf` → lógica: recursos que usan var.<x>
+- `outputs.tf` → qué se expone (SÍ se versiona; ≈ return)
+- Modelo mental: entrada (variables) → proceso (recursos) → salida (outputs).
+
 ## Analogías usadas
 
 - **🐳 Docker** — Terraform es el `Dockerfile` de tu infraestructura: describes el estado
@@ -317,6 +377,15 @@ diferencia). Pero ¿cómo sabe "lo que existe"? Necesita MEMORIA = el state.
 - **📄 State vs Backend ≈ documento vs dónde lo guardas (Paso 5)** — el state es el documento
   (memoria.docx); el backend es el lugar/mecanismo de almacenamiento (disco local vs Google
   Drive vs servidor). Mismo dato, distinta ubicación.
+- **⚙️ Variables ≈ parámetros/appsettings; outputs ≈ return (Paso 6)** — un bloque `variable`
+  es como un parámetro de constructor o una entrada de appsettings.json; un `output` es como el
+  `return` o las propiedades públicas que una clase expone.
+- **🗂️ terraform.tfvars ≈ .env; .tfvars.example ≈ .env.example (Paso 6)** — el .tfvars tiene
+  los valores reales y no se versiona; el .tfvars.example es la plantilla versionada. Mismo
+  patrón que Node.
+- **🧅 Precedencia de variables ≈ IConfiguration en capas de .NET (Paso 6)** — CLI > .tfvars >
+  TF_VAR_ (entorno) > default, igual que appsettings < env vars < args de CLI: cada capa
+  sobrescribe a la anterior.
 
 ## Preguntas y respuestas
 
@@ -382,6 +451,29 @@ diferencia). Pero ¿cómo sabe "lo que existe"? Necesita MEMORIA = el state.
   R: No. State = el dato (.tfstate, la memoria). Backend = el mecanismo/lugar donde se guarda.
   S3 es un tipo de backend; en él se guarda el state. Ver "STATE vs BACKEND" en Conceptos.
 
+- **P (Paso 6): ¿Cómo declaras y usas una variable?**
+  R (correcta): declarar con `variable "file_content" {}` (argumentos type, description,
+  default); usar con `var.file_content`.
+
+- **P (Paso 6): ¿Con qué se compara terraform.tfvars y por qué va en .gitignore?**
+  R (correcta): ≈ el `.env` de Node; va en .gitignore porque puede tener info sensible.
+
+- **P (Paso 6): ¿Diferencia entre variable y output?**
+  R (correcta): variable = entrada (reemplaza el hardcodeo); output = salida que se expone tras
+  apply. Refinamiento: el output no es cualquier cosa que sale, sino un valor que TÚ eliges
+  exponer (típicamente un atributo de un recurso).
+
+- **P (Paso 6): Con default="dev" y `-var="environment=prod"`, ¿cuál gana?**
+  R (correcta): gana "prod". El default es el valor de último recurso (solo si nadie provee
+  otro); la CLI (`-var`) es máxima prioridad y lo sobrescribe.
+
+- **P (Paso 6, del alumno): Si terraform.tfvars no se sube a GitHub, ¿cómo llega a cada
+  persona? ¿Cada uno tiene sus variables localmente?**
+  R: Sí, cada quien tiene su terraform.tfvars local. Se resuelve con: (1) terraform.tfvars.example
+  versionado (plantilla, ≈ .env.example) que cada dev copia y rellena; (2) defaults en
+  variables.tf (versionado) para lo que no cambia; (3) secretos por TF_VAR_ / Secrets Manager /
+  Vault, nunca en archivo. Se versiona la ESTRUCTURA, no los VALORES. Ver detalle en Conceptos.
+
 - Intuición inicial incompleta sobre "declarativo": se pensó como "declarar qué recurso
   crear". Corregido a "declarar el **estado final** deseado" (un estado, no una acción).
   Ver corrección detallada en "Conceptos cubiertos → Paso 1".
@@ -391,6 +483,11 @@ diferencia). Pero ¿cómo sabe "lo que existe"? Necesita MEMORIA = el state.
   El local_file usa el hash del contenido como id, así que un contenido distinto = "otro
   recurso" → recrear. Otros atributos/providers (ej. un tag de aws_s3_bucket) sí modifican
   in-place. No asumir el tipo de acción; leer siempre el plan.
+
+- (Paso 6) En outputs.tf el alumno puso `value = local_file.hello_world` (el recurso entero)
+  en vez de `value = local_file.hello_world.id` (el atributo). Lección: el value de un output
+  es una referencia a un ATRIBUTO (`<recurso>.<atributo>`), como `objeto.Id` en C#, no el
+  recurso completo. Corregido.
 
 ## Configuración del entorno
 
@@ -413,7 +510,13 @@ diferencia). Pero ¿cómo sabe "lo que existe"? Necesita MEMORIA = el state.
   — argumentos filename (requerido), content, defaults de permisos. (Paso 4)
 - [Purpose of Terraform State](https://developer.hashicorp.com/terraform/language/state/purpose)
   — las 4 razones del state: mapeo, destrucción, performance, colaboración. (Paso 5)
+- [Input Variables](https://developer.hashicorp.com/terraform/language/values/variables)
+  — bloque variable, tipos, asignación (.tfvars/-var/TF_VAR_), precedencia. (Paso 6)
+- [Output Values](https://developer.hashicorp.com/terraform/language/values/outputs)
+  — bloque output, value/description/sensitive, terraform output. (Paso 6)
 
 ## Estado
 
-En progreso — 2026-07-07
+COMPLETA ✅ — 2026-07-07. Los 6 pasos de fundamentos cubiertos, cada uno con explicación,
+analogías, preguntas de verificación respondidas por el alumno y (pasos 4-6) ejercicio
+práctico real con el provider `local` (sin costo AWS). Ejercicios ya destruidos (destroy).
