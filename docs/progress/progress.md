@@ -1,20 +1,20 @@
 # Progreso de aprendizaje
 
-Última actualización: 2026-07-07 (sesión 5)
+Última actualización: 2026-07-07 (sesión 6)
 
 ## Etapa actual
 
-Etapa 0 — Conceptos de Terraform (en progreso)
+Etapa 0 — Conceptos de Terraform (COMPLETA ✅) → siguiente: Etapa 1 (primeros recursos AWS)
 
 ## Checklist
 
-- [ ] Etapa 0 — Conceptos de Terraform
+- [x] Etapa 0 — Conceptos de Terraform ✅ (2026-07-07)
   - [x] 1. Qué es Infrastructure as Code y por qué usarlo ✅ (2026-07-07)
   - [x] 2. Sintaxis básica de HCL ✅ (2026-07-07)
   - [x] 3. Providers ✅ (2026-07-07)
   - [x] 4. Workflow principal (init → plan → apply → destroy) ✅ (2026-07-07)
   - [x] 5. State (archivo de estado, drift) ✅ (2026-07-07)
-  - [ ] 6. Variables y outputs
+  - [x] 6. Variables y outputs ✅ (2026-07-07)
 - [ ] Etapa 1 — Primeros recursos reales de AWS
   - [ ] 7. Bucket S3 con versioning
   - [ ] 8. Rol IAM + policy para Lambda
@@ -73,22 +73,40 @@ Etapa 0 — Conceptos de Terraform (en progreso)
   alineación de `=` (excusa para presentar `terraform fmt` más adelante) y el atajo de
   interpolación (path.module sin comillas cuando va solo).
 
-- Pasos 1-4 ya mergeados a dev vía PR. El flujo git del alumno es sólido (branch desde dev →
+- Pasos 1-5 ya mergeados a dev vía PR. El flujo git del alumno es sólido (branch desde dev →
   add con verificación --ignored/--dry-run → commit conventional → PR a dev → pull). Aprendió
   a verificar que el .tfstate NO entre al repo antes de cada add.
-- Paso 5 (State) COMPLETADO y documentado. Se cubrió: las 4 razones del state (mapeo,
-  destrucción, performance/caché, colaboración), DRIFT (definición + detección vía Refreshing
-  state), la distinción STATE vs BACKEND (duda del alumno, ya registrada), y que el state es
-  delicado (secretos, no editar a mano, es la fuente de verdad). DEMO DE DRIFT en vivo: editar
-  hello.txt a mano → plan lo detectó → apply lo revirtió. Lección extra: el tipo de acción
-  (recreate vs modify) depende del provider (local_file recrea porque el id es el hash del
-  contenido). El alumno respondió bien las 2 preguntas de verificación.
+- Paso 6 (Variables y outputs) COMPLETADO → **ETAPA 0 COMPLETA** 🏁. Se cubrió: bloque
+  `variable` (type/description/default), uso con `var.<x>`, asignación y PRECEDENCIA (CLI >
+  .tfvars > TF_VAR_ > default) demostrada en vivo (el .tfvars ganó al default); bloque `output`
+  (value = referencia a atributo, `terraform output`); y la gran duda del alumno sobre cómo se
+  comparten variables en equipo (patrón .tfvars.example ≈ .env.example, defaults versionados,
+  secretos por TF_VAR_/Secrets Manager). Ejercicio práctico: parametrizó el local_file
+  (variables.tf, terraform.tfvars, main.tf con var.<x>, outputs.tf con .id). Bug que cometió y
+  corrigió: output apuntaba al recurso entero, no a `.id`. Respondió bien las 4 preguntas.
 
-- PENDIENTE DE COMMIT: el Paso 5 no está commiteado. Es SOLO documentación (docs/context y
-  docs/progress); el main.tf no cambió y ya hicimos destroy (no hay infra viva ni state con
-  recursos). Sugerir rama docs/stage-0-state desde dev → commit docs(stage-0): ... → PR a dev.
-- Siguiente contenido: Paso 6 — Variables y outputs (CIERRA la Etapa 0). variables.tf (input
-  vars con type/description/default), terraform.tfvars (≈ .env), outputs.tf. Analogías:
-  variables ≈ parámetros de constructor/appsettings en .NET, .tfvars ≈ .env de Node. Probable
-  ejercicio práctico: parametrizar el main.tf del local_file (ej. el content/filename por
-  variable) y exponer algo por output. Recordar: explicar primero, el alumno escribe el código.
+- PENDIENTE DE COMMIT: el Paso 6 no está commiteado. Hay CÓDIGO nuevo (variables.tf,
+  outputs.tf, main.tf modificado) + docs. OJO: terraform.tfvars está gitignored (bien) →
+  verificar con --ignored/--dry-run que NO entre, y que SÍ entren variables.tf, outputs.tf,
+  main.tf, .terraform.lock.hcl y los docs. Ya se hizo destroy (sin infra viva). Sugerir rama
+  feat/stage-0-variables-outputs desde dev → commit feat(stage-0): ... (+ docs) → PR a dev.
+  NOTA para futuro: valdría la pena crear un terraform.tfvars.example versionado como buena
+  práctica (se habló en la teoría), por si se quiere reforzar el patrón.
+
+=== SIGUIENTE: ETAPA 1 — Primeros recursos AWS reales ===
+- ⚠️ ANTES de tocar AWS, hacer el SETUP que se venía posponiendo (requisitos del CLAUDE.md):
+  1. Instalar AWS CLI v2 (winget: Amazon.AWSCLI) — verificar con `aws --version`.
+  2. Configurar un PERFIL DEDICADO del AWS CLI (no default/root). Nunca pedir/pegar access keys
+     en el chat ni en archivos.
+  3. BILLING: confirmar que el alumno creó un AWS Budget con alertas ($1/$5/$10) en la Billing
+     Console — paso manual, previo a crear cualquier recurso (cuenta free-tier).
+  4. Elegir UNA región para todo el proyecto (ej. us-east-1) y fijarla vía variable, no
+     hardcodeada.
+- Contenido Etapa 1: Paso 7 — bucket S3 (con versioning + bucket policy): primer provider aws
+  real (providers.tf con required_providers aws ~> 5.0 + provider "aws" region). Refrescar QUÉ
+  es S3 antes del Terraform. Paso 8 — rol IAM + policy para Lambda (data source
+  aws_iam_policy_document, dependencias entre recursos).
+- Recordar SIEMPRE: regla de oro CLAUDE.md (no escribir el código por el alumno salvo que lo
+  pida), explicar el servicio AWS primero (refresher), consultar docs oficiales, flag de costos,
+  plan antes de apply, destroy al final. Tags obligatorios cuando lleguen (Project/Environment/
+  ManagedBy=terraform).
